@@ -234,28 +234,28 @@ delete_old_db_record(mnesia, _Zone) ->
 ok.
 
 clean_DB(RPZ) ->
-  AXFR=get_allzones_info(ets,axfr),
-  RPZn = [X#rpz.zone || X <- RPZ ],
+  AXFR = get_allzones_info(ets, axfr),
+  RPZn = [X#rpz.zone || X <- RPZ],
+  
+  lists:foreach(
+    fun([X, Y | _]) ->
+      ?logDebugMSG("Zone ~p removing from AXFR cache ~n", [Y]),
+      delete_db_pkt(#rpz{zone = X, zone_str = Y, serial = 42}),
+      delete_old_db_record(#rpz{zone = X, zone_str = Y, serial = 42})
+    end,
+    [L || L = [X, Y | _] <- AXFR, lists:member(X, RPZn)]
+  ),
+
+  IXFR = get_allzones_info(ets, ixfr),
 
   lists:foreach(
     fun([X, Y | _]) ->
-      ?logDebugMSG("Zone ~p removing from AXFR cache ~n",[Y]),
+      ?logDebugMSG("Zone ~p removing from IXFR cache ~n", [Y]),
       delete_db_pkt(#rpz{zone = X, zone_str = Y, serial = 42}),
-      delete_old_db_record(#rpz{zone= X , zone_str = Y,serial = 42})} 
+      delete_old_db_record(#rpz{zone = X, zone_str = Y, serial = 42})
     end,
-      [L || L = [X, Y | _] <- AXFR, lists:member(X, RPZn)]
-  ),
-	
-IXFR=get_allzones_info(ets,ixfr),
-	
-lists:foreach(
-  fun([X, Y | _]) ->
-    ?logDebugMSG("Zone ~p removing from IXFR cache ~n", [Y]),
-    delete_db_pkt(#rpz{zone = X, zone_str = Y, serial = 42}),
-    delete_old_db_record(#rpz{zone = X, zone_str = Y, serial = 42})
-  end,
-  [L || L = [X, Y | _] <- IXFR, lists:member(X, RPZn)]
-).
+    [L || L = [X, Y | _] <- IXFR, lists:member(X, RPZn)]
+  ).
 
 get_zone_info(Zone,DB) ->
   get_zone_info(?DBStorage,Zone,DB).
