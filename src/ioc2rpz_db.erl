@@ -93,6 +93,11 @@ read_db_record(ets, Zone, Serial, new) ->
 read_db_record(mnesia, _Zone, _Serial, new) ->
     ok.
 
+write_db_record(Zone, IOC, XFR) when Zone#rpz.cache == <<"true">> ->
+    write_db_record(?DBStorage, Zone, IOC, XFR);
+write_db_record(_Zone, _IOC, _XFR) ->
+    {ok, 0}.
+
 get_zone_info(Zone, DB) ->
     get_zone_info(?DBStorage, Zone, DB).
 get_zone_info(ets, Zone, axfr) ->
@@ -107,16 +112,21 @@ get_allzones_info(ets, axfr) ->
 get_allzones_info(mnesia, axfr) ->
     ok.
 
-saveZones() ->
-    [save_zone_info(X) || [X] <- ets:match(cfg_table, {[rpz, '_'], '_', '$4'}), X#rpz.cache == <<"true">>],
+clean_DB(RPZ) ->
+    AXFR = get_allzones_info(ets, axfr),
+    [{delete_db_pkt(#rpz{zone = X, zone_str = Y, serial = 42}), delete_old_db_record(#rpz{zone = X, zone_str = Y, serial = 42})} || [X, Y | _] <- AXFR, lists:member(X, RPZ)],
     ok.
 
-loadZones() ->
+delete_old_db_record(Zone) ->
+    delete_old_db_record(?DBStorage, Zone).
+delete_old_db_record(ets, Zone) ->
+    ets:select_delete(rpz_ixfr_table, [{{{ioc, Zone#rpz.zone, '_', '_'}, '$1', '_'}, [{'=<', '$1', Zone#rpz.serial}], [true]}]);
+delete_old_db_record(mnesia, _Zone) ->
     ok.
 
-save_zone_info(Zone) ->
-    save_zone_info(?DBStorage, Zone).
-save_zone_info(ets, Zone) ->
-    ets:insert(rpz_axfr_table, {{axfr_rpz_cfg, Zone#rpz.zone}, Zone#rpz.zone_str, Zone#rpz.serial, Zone#rpz.soa_timers, Zone#rpz.cache, Zone#rpz.wildcards, Zone#rpz.sources, Zone#rpz.ioc_md5, Zone#rpz.update_time, Zone#rpz.ioc_count, Zone#rpz.rule_count});
-save_zone_info(mnesia, _Zone) ->
-    ok.
+lookup_db_record(IOC, Recurs) ->
+    lookup_db_record(?DBStorage, IOC, Recurs).
+lookup_db_record(ets, IOC, false) ->
+    {ok, [{IOC, ets:select(rpz_ixfr_table, [{{{ioc, '_', IOC, '_'}, '$2', '$3'}, [], [{{'$0', '$2', '$3'}}]}])}]};
+lookup_db_record(mnesia, _IOC, _Recurs) ->
+    {ok, []}.
