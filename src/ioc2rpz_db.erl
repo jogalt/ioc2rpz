@@ -52,17 +52,30 @@ init_db(mnesia, _DBDir, _PID) ->
 %%% Database Reads & Writes
 %%% ===================
 
+db_table_info(Table, Param) ->
+    db_table_info(?DBStorage, Table, Param).
+db_table_info(ets, Table, Param) ->
+    ets:info(Table, Param);
+db_table_info(mnesia, Table, Param) ->
+    mnesia:table_info(Table, Param).
+
+read_db_pkt(Zone) ->
+    read_db_pkt(?DBStorage, Zone).
 read_db_pkt(ets, Zone) ->
     Pkt = ets:match(rpz_axfr_table, {{rpz, Zone#rpz.zone, Zone#rpz.serial, '_', '_'}, '$2'}),
     [binary_to_term(X) || [X] <- Pkt];
 read_db_pkt(mnesia, _Zone) ->
     ok.
 
+write_db_pkt(Zone, Pkt) ->
+    write_db_pkt(?DBStorage, Zone, Pkt).
 write_db_pkt(ets, Zone, {PktN, _, _, _, _} = Pkt) ->
     ets:insert(rpz_axfr_table, {{rpz, Zone#rpz.zone, Zone#rpz.serial, PktN, self()}, term_to_binary(Pkt, [{compressed, ?Compression}])});
 write_db_pkt(mnesia, _Zone, _Pkt) ->
     ok.
 
+delete_db_pkt(Zone) ->
+    delete_db_pkt(?DBStorage, Zone).
 delete_db_pkt(ets, Zone) when Zone#rpz.serial == 42 ->
     ets:match_delete(rpz_axfr_table, {{rpz, Zone#rpz.zone, '_', '_', '_'}, '_'});
 delete_db_pkt(ets, Zone) ->
@@ -70,27 +83,40 @@ delete_db_pkt(ets, Zone) ->
 delete_db_pkt(mnesia, _Zone) ->
     ok.
 
-%%% ===================
-%%% Fix: Ensure get_allzones_info/1 is used
-%%% ===================
-
-clean_DB(RPZ) ->
-    AXFR = get_allzones_info(ets, axfr),
-    lists:foreach(fun([X, Y | _]) ->
-        ?logDebugMSG("Zone ~p removing from AXFR cache ~n", [Y]),
-        delete_db_pkt(#rpz{zone=X, zone_str=Y, serial=42}),
-        delete_old_db_record(#rpz{zone=X, zone_str=Y, serial=42})
-    end, AXFR).
-
-%%% ===================
-%%% Fix: Ensure clauses match properly
-%%% ===================
-
+read_db_record(Zone, Serial, Type) ->
+    read_db_record(?DBStorage, Zone, Serial, Type).
 read_db_record(ets, Zone, Serial, new) ->
     ets:select(rpz_ixfr_table, [
         {{{ioc, Zone#rpz.zone, '$1', '$4'}, '$2', '$3'}, [{'>', '$2', Serial}], ['$$']},
         {{{ioc, Zone#rpz.zone, '$1', '$4'}, '$2', '$3'}, [{'==', '$3', 0}], ['$$']}
-    ]).
+    ]);
+read_db_record(mnesia, _Zone, _Serial, new) ->
+    ok.
 
+get_zone_info(Zone, DB) ->
+    get_zone_info(?DBStorage, Zone, DB).
+get_zone_info(ets, Zone, axfr) ->
+    ets:match(rpz_axfr_table, {{axfr_rpz_cfg, Zone#rpz.zone}, '$0', '$1', '$2', '$3', '$4', '$5', '$6', '$7', '$8', '$9'});
+get_zone_info(mnesia, _Zone, axfr) ->
+    ok.
+
+get_allzones_info(DB) ->
+    get_allzones_info(?DBStorage, DB).
 get_allzones_info(ets, axfr) ->
-    ets:match(rpz_axfr_table, {{axfr_rpz_cfg, '$0'}, '$1', '$2', '$3', '$4', '$5', '$6', '$7', '$8', '$9', '$10'}).
+    ets:match(rpz_axfr_table, {{axfr_rpz_cfg, '$0'}, '$1', '$2', '$3', '$4', '$5', '$6', '$7', '$8', '$9', '$10'});
+get_allzones_info(mnesia, axfr) ->
+    ok.
+
+saveZones() ->
+    [save_zone_info(X) || [X] <- ets:match(cfg_table, {[rpz, '_'], '_', '$4'}), X#rpz.cache == <<"true">>],
+    ok.
+
+loadZones() ->
+    ok.
+
+save_zone_info(Zone) ->
+    save_zone_info(?DBStorage, Zone).
+save_zone_info(ets, Zone) ->
+    ets:insert(rpz_axfr_table, {{axfr_rpz_cfg, Zone#rpz.zone}, Zone#rpz.zone_str, Zone#rpz.serial, Zone#rpz.soa_timers, Zone#rpz.cache, Zone#rpz.wildcards, Zone#rpz.sources, Zone#rpz.ioc_md5, Zone#rpz.update_time, Zone#rpz.ioc_count, Zone#rpz.rule_count});
+save_zone_info(mnesia, _Zone) ->
+    ok.
