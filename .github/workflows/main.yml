@@ -19,20 +19,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check repository structure
+        run: ls -R
+
+      - name: Check file naming consistency
+        run: find . -iname "*.erl"
+
       - name: Set up Erlang/OTP and Rebar3
         uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
           rebar3-version: '3.20.0'
 
-      - name: Install dependencies
-        run: rebar3 get-deps
+      - name: Check Erlang and Rebar3 versions
+        run: |
+          erl -version
+          rebar3 version
 
-      - name: Compile project
-        run: rebar3 compile
+      - name: Install dependencies
+        run: rebar3 get-deps --verbose || (cat rebar3.crashdump || true; exit 1)
+
+      - name: Compile project with debugging
+        run: |
+          ERL_AFLAGS="-DTEST_ENV" rebar3 compile --verbose || (cat rebar3.crashdump || true; exit 1)
+
+      - name: Debug Macros and Functions
+        run: |
+          rebar3 shell -eval "io:format('DBStorage Macro: ~p~n', [?DBStorage])."
+          rebar3 shell -eval "ioc2rpz_db:debug_macro()."
+          rebar3 shell -eval "ioc2rpz_db:debug_test()."
+
+      - name: Capture rebar3 crash dump if exists
+        if: failure()
+        run: cat rebar3.crashdump || true
 
       - name: Run tests
-        run: rebar3 eunit
+        run: rebar3 eunit --verbose || (cat rebar3.crashdump || true; exit 1)
 
   docker:
     runs-on: ubuntu-latest
