@@ -4,12 +4,17 @@
 -module(ioc2rpz_db).
 -include_lib("ioc2rpz.hrl").
 
+%% Export functions
 -export([
     init_db/3, db_table_info/2, read_db_pkt/1, write_db_pkt/2, delete_db_pkt/1, 
     read_db_record/3, write_db_record/3, delete_old_db_record/1, saveZones/0, 
     loadZones/0, loadZones/1, get_zone_info/2, clean_DB/1, save_zone_info/1, 
     get_allzones_info/1, lookup_db_record/2
 ]).
+
+%% Define the records used in ETS/Mnesia
+-record(rpz_axfr_table, {zone, zone_str, serial, soa_timers, cache, wildcards, sources, ioc_md5, update_time, ioc_count, rule_count}).
+-record(rpz_ixfr_table, {zone, zone_str, serial, serial_ixfr, ixfr_update_time, ixfr_nz_update_time}).
 
 %%% ===================
 %%% Database Initialization
@@ -66,31 +71,11 @@ delete_db_pkt(mnesia, _Zone) ->
     ok.
 
 %%% ===================
-%%% Fix: Use lists:foreach to avoid unused term
-%%% ===================
-
-write_db_record(ets, Zone, IOCs, axfr) ->
-    CTime = erlang:system_time(seconds),
-    NRbefore = ets:select_count(rpz_ixfr_table, [{{{ioc, Zone#rpz.zone, '$1'}, '$2', '$3'}, [], ['true']}]),
-
-    lists:foreach(fun({IOC, IOCExp, IoCType}) -> 
-        ets:insert(rpz_ixfr_table, {{ioc, Zone#rpz.zone, IOC, IoCType}, Zone#rpz.serial, IOCExp}) 
-    end, IOCs),
-
-    NRafter = ets:select_count(rpz_ixfr_table, [{{{ioc, Zone#rpz.zone, '$1'}, '$2', '$3'}, [], ['true']}]),
-
-    ?logDebugMSG("AXFR update ets. Zone ~p. Before ~p After ~p Indicators ~p~n",
-                 [Zone#rpz.zone_str, NRbefore, NRafter, length(IOCs)]),
-    {ok, 0}.
-
-%%% ===================
 %%% Fix: Ensure get_allzones_info/1 is used
 %%% ===================
 
 clean_DB(RPZ) ->
     AXFR = get_allzones_info(ets, axfr),
-    RPZn = [X#rpz.zone || X <- RPZ],
-    
     lists:foreach(fun([X, Y | _]) ->
         ?logDebugMSG("Zone ~p removing from AXFR cache ~n", [Y]),
         delete_db_pkt(#rpz{zone=X, zone_str=Y, serial=42}),
@@ -102,7 +87,6 @@ clean_DB(RPZ) ->
 %%% ===================
 
 read_db_record(ets, Zone, Serial, new) ->
-    ?logDebugMSG("read_db_record: Serial=~p, Zone Serial=~p~n", [Serial, Zone#rpz.serial]),
     ets:select(rpz_ixfr_table, [
         {{{ioc, Zone#rpz.zone, '$1', '$4'}, '$2', '$3'}, [{'>', '$2', Serial}], ['$$']},
         {{{ioc, Zone#rpz.zone, '$1', '$4'}, '$2', '$3'}, [{'==', '$3', 0}], ['$$']}
