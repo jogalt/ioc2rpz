@@ -37,24 +37,14 @@ jobs:
           rebar3 version
 
       - name: Install dependencies
-        run: rebar3 get-deps --verbose || (cat rebar3.crashdump || true; exit 1)
+        run: rebar3 get-deps || (test -f rebar3.crashdump && cat rebar3.crashdump || true; exit 1)
 
       - name: Compile project with debugging
         run: |
-          ERL_AFLAGS="-DTEST_ENV" rebar3 compile --verbose || (cat rebar3.crashdump || true; exit 1)
-
-      - name: Debug Macros and Functions
-        run: |
-          rebar3 shell -eval "io:format('DBStorage Macro: ~p~n', [?DBStorage])."
-          rebar3 shell -eval "ioc2rpz_db:debug_macro()."
-          rebar3 shell -eval "ioc2rpz_db:debug_test()."
-
-      - name: Capture rebar3 crash dump if exists
-        if: failure()
-        run: cat rebar3.crashdump || true
+          ERL_AFLAGS="-DTEST_ENV" rebar3 compile || (test -f rebar3.crashdump && cat rebar3.crashdump || true; exit 1)
 
       - name: Run tests
-        run: rebar3 eunit --verbose || (cat rebar3.crashdump || true; exit 1)
+        run: rebar3 eunit || (test -f rebar3.crashdump && cat rebar3.crashdump || true; exit 1)
 
   docker:
     runs-on: ubuntu-latest
